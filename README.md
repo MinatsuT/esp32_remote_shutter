@@ -1,4 +1,4 @@
-# ESP32 Bluetooth Smartphone Camera Remote Shutter
+# ESP32 Bluetooth Remote Shutter for a Smartphone Camera
 ## Pre-requirements
 Before compile this project, please install [ESP-IDF](https://github.com/espressif/esp-idf) and set `$(IDF_PATH)`:
 
