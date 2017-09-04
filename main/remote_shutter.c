@@ -41,7 +41,7 @@
 /* Remote Shutter for smartphone camreras based on the BTstack HID keyboard demo
  * code.
  *
- * Status: Basic implementation. Works with Android.
+ * Status: Basic implementation. Works with Android and iOS.
  *
  * @text This is an HID keyboard device specialized for remote shutter.
  */
@@ -73,13 +73,12 @@ static uint16_t hid_cid;
 
 // from USB HID Specification 1.1, Appendix B.1
 const uint8_t hid_descriptor_keyboard_boot_mode[] = {
-
     0x05, 0x01,                    // Usage Page (Generic Desktop)
     0x09, 0x06,                    // Usage (Keyboard)
     0xa1, 0x01,                    // Collection (Application)
+    0x85, 0x01,                    // Report Id (1)
 
     // Modifier byte
-
     0x75, 0x01,                    //   Report Size (1)
     0x95, 0x08,                    //   Report Count (8)
     0x05, 0x07,                    //   Usage Page (Key codes)
@@ -90,13 +89,11 @@ const uint8_t hid_descriptor_keyboard_boot_mode[] = {
     0x81, 0x02,                    //   Input (Data, Variable, Absolute)
 
     // Reserved byte
-
     0x75, 0x01,                    //   Report Size (1)
     0x95, 0x08,                    //   Report Count (8)
     0x81, 0x03,                    //   Input (Constant, Variable, Absolute)
 
     // LED report + padding
-
     0x95, 0x05,                    //   Report Count (5)
     0x75, 0x01,                    //   Report Size (1)
     0x05, 0x08,                    //   Usage Page (LEDs)
@@ -109,7 +106,6 @@ const uint8_t hid_descriptor_keyboard_boot_mode[] = {
     0x91, 0x03,                    //   Output (Constant, Variable, Absolute)
 
     // Keycodes
-
     0x95, 0x06,                    //   Report Count (6)
     0x75, 0x08,                    //   Report Size (8)
     0x15, 0x00,                    //   Logical Minimum (0)
@@ -120,6 +116,19 @@ const uint8_t hid_descriptor_keyboard_boot_mode[] = {
     0x81, 0x00,                    //   Input (Data, Array)
 
     0xc0,                          // End collection  
+
+    0x05, 0x0C,       // (GLOBAL) USAGE_PAGE         0x000C Consumer Device Page
+    0x09, 0x01,       // (LOCAL)  USAGE              0x000C0001 Consumer Control
+    0xA1, 0x01,       // (MAIN)   COLLECTION         0x01 Application
+    0x85, 0x02,       //   (GLOBAL) REPORT_ID          2
+       0x19, 0x00,       //   (LOCAL)  USAGE_MINIMUM 
+       0x2A, 0x9C, 0x02, //   (LOCAL)  USAGE_MAXIMUM
+       0x15, 0x00,       //   (GLOBAL) LOGICAL_MINIMUM 
+       0x26, 0x9C, 0x02, //   (GLOBAL) LOGICAL_MAXIMUM    0x029C (668)
+       0x95, 0x01,       //   (GLOBAL) REPORT_COUNT       0x01 (1) Number of fields
+       0x75, 0x10,       //   (GLOBAL) REPORT_SIZE        0x10 (16) Number of bits per field
+       0x81, 0x00,       //   (MAIN)   INPUT 
+     0xC0              // (MAIN)   END_COLLECTION     Application
 };
 
 #if 0
@@ -203,40 +212,48 @@ static int keycode_and_modifer_us_for_character(uint8_t character, uint8_t * key
 // HID Report sending
 static xQueueHandle sendQueue=0;
 typedef struct keyReport {
-    int keycode;
+    int reportId;
     int modifier;
+    int keycode;
 } keyReport_t;
 #if 0
 static int send_keycode;
 static int send_modifier;
 #endif
 
-static void send_key(int modifier, int keycode){
+static void send_key(int reportID, int modifier, int keycode){
 #if 0
     send_keycode = keycode;
     send_modifier = modifier;
 #endif
-    keyReport_t rep={keycode,modifier};
-    if (xQueueSend(sendQueue,&rep,0)==pdTRUE) {
+    keyReport_t rep={reportID, modifier, keycode};
+    if (xQueueSend(sendQueue, &rep, 0)==pdTRUE) {
         hid_device_request_can_send_now_event(hid_cid);
     }
 }
 
-static void send_report(int modifier, int keycode){
-    printf("Send report [%X]\n",keycode);
-    uint8_t report[] = { 0xa1, modifier, 0, 0, keycode, 0, 0, 0, 0, 0};
-    hid_device_send_interrupt_message(hid_cid, &report[0], sizeof(report));
-}
-
-static void send_report_queue(){
+static void send_report() {
     keyReport_t rep;
-    if (xQueueReceive(sendQueue,&rep,0)==pdTRUE) {
-        printf("Send key [%X]\n",rep.keycode);
-        send_report(rep.modifier,rep.keycode);
+    if (xQueueReceive(sendQueue, &rep, 0)==pdTRUE) {
+        switch (rep.reportId) {
+            case 1:
+                printf("Send key press [0x%02X]\n",rep.keycode);
+                uint8_t report_key[] = { 0xa1, 1, rep.modifier, 0, 0, rep.keycode, 0, 0, 0, 0, 0};
+                hid_device_send_interrupt_message(hid_cid, &report_key[0], sizeof(report_key));
+                break;
+            case 2:
+                printf("Send consumer control [0x%03X]\n",rep.keycode);
+                uint8_t report_cc[] = { 0xa1, 2, rep.keycode & 0xff, (rep.keycode>>8) & 0xff};
+                hid_device_send_interrupt_message(hid_cid, &report_cc[0], sizeof(report_cc));
+                break;
+            default:
+                ;
+        }
         hid_device_request_can_send_now_event(hid_cid);
     } else {
         printf("Send nothing\n");
-        send_report(0,0);
+        uint8_t report[] = { 0xa1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        hid_device_send_interrupt_message(hid_cid, &report[0], sizeof(report));
     }
 }
 
@@ -257,8 +274,12 @@ static void stdin_process(char character){
     }
 #endif
     printf("BTstack: Put shutter keycodes into the FIFO\n");
-    send_key(0,0x40); // Return
-    send_key(0,0x80); // Volume Up
+    // for Android
+    send_key(1, 0, 0x40); // Return
+    send_key(1, 0, 0x80); // Volume Up
+    // for iOS
+    send_key(2, 0, 0xe9); // Volume Increment
+    send_key(2, 0, 0); // Release
 }
 #else
 
@@ -286,7 +307,7 @@ static void typing_timer_handler(btstack_timer_source_t * ts){
     uint8_t keycode;
     int found = keycode_and_modifer_us_for_character(character, &keycode, &modifier);
     if (found){
-        send_key(modifier, keycode);
+        send_key(1, modifier, keycode);
     }
 
     // set next timer
@@ -333,7 +354,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * pack
                             hid_cid = 0;
                             break;
                         case HID_SUBEVENT_CAN_SEND_NOW:
-                            send_report_queue();
+                            send_report();
                             break;
                         default:
                             break;

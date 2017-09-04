@@ -32,6 +32,3 @@ Before compile this project, please install [ESP-IDF](https://github.com/espress
 - Scan BT devices from your smartphone and establish a connection to the "ESP32 Remote Shutter" device.
 - Start camera app on your smartphone.
 - Push "enter" from the above monitor, then shutter code (Volume Up) will be sent.
-
-## Limitations
-Current version supports Android only.
