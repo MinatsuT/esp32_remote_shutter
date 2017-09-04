@@ -41,7 +41,7 @@
 /* Remote Shutter for smartphone camreras based on the BTstack HID keyboard demo
  * code.
  *
- * Status: Basic implementation. Works with Android and iOS.
+ * Status: Basic implementation. Works with Android.
  *
  * @text This is an HID keyboard device specialized for remote shutter.
  */
