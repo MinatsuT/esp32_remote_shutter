@@ -1,3 +1,7 @@
 build/
+components/
+set_port.sh
+sdkconfig
 sdkconfig.old
 .vscode
+.clang-format

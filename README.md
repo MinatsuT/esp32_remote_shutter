@@ -11,7 +11,7 @@ Before compile this project, please install [ESP-IDF](https://github.com/espress
 % cd ~/esp
 % git clone https://github.com/bluekitchen/btstack.git
 ```
-2. Clone this project into "btstack/port/esp32", and copy "components" and "sdconfig" from the templete directory.
+2. Clone this project into "btstack/port/esp32", and copy "components" and "sdkconfig" files from the template directory.
 ```
 % cd btstack/port/esp32
 % git clone https://github.com/MinatsuT/esp32_remote_shutter.git
